@@ -44,9 +44,34 @@ And that's it! Now when you run `mix format` you'll also get the benefits of Sty
 
 ### Configuration
 
-@TODO document: config for lifting, and why we won't add options other configs
+There isn't much! This is intentional.
 
 Styler is @adobe's internal Style Guide Enforcer - allowing exceptions to the styles goes against that ethos. Happily, it's open source and thus yours to do with as you will =)
+
+However, it's possible to gradually implement Styler via minimal config in `.formatter.exs` file:
+
+```elixir
+[
+  plugins: [Styler],
+  styler: [
+    # List of rules to enable, if not present all rules are enabled
+    # If empty, no rules are enabled
+    enabled_rules: [
+      # Can have a keyword list of options
+      {Styler.Style.ModuleDirectives, []},
+
+      # Or just a module name
+      Styler.Style.Pipes
+    ]
+  ]
+]
+```
+
+By default, if the `styler` key is not present, all rules are enabled.
+
+#### Supported options
+
+* `ignore_prefixes` - a list of file prefixes to skip when applying the rule. Example: `ignore_prefixes: ["test/"]`
 
 ## Features (or as we call them, "Styles")
 

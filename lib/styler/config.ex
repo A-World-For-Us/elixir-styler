@@ -43,7 +43,8 @@ defmodule Styler.Config do
       |> MapSet.union(@stdlib)
 
     :persistent_term.put(@key, %{
-      lifting_excludes: excludes
+      lifting_excludes: excludes,
+      enabled_styles: config[:enabled_styles]
     })
   end
 

@@ -34,8 +34,33 @@ defmodule Styler do
     Styler.Config.set(opts)
     zipper = Zipper.zip(ast)
 
+    enabled_styles = Styler.Config.get(:enabled_styles) || @styles
+
     {{ast, _}, comments} =
-      Enum.reduce(@styles, {zipper, comments}, fn style, {zipper, comments} ->
+      enabled_styles
+      |> Enum.filter(fn
+        {_style, opts} ->
+          if Keyword.has_key?(opts, :ignore_prefixes) do
+            file = Path.join(File.cwd!(), file)
+
+            found =
+              opts[:ignore_prefixes]
+              |> Enum.map(&Path.join(File.cwd!(), &1))
+              |> Enum.any?(&String.starts_with?(file, &1))
+
+            !found
+          else
+            true
+          end
+
+        _style ->
+          true
+      end)
+      |> Enum.map(fn
+        {style, _opts} -> style
+        style -> style
+      end)
+      |> Enum.reduce({zipper, comments}, fn style, {zipper, comments} ->
         context = %{comments: comments, file: file}
 
         try do
@@ -61,6 +86,24 @@ defmodule Styler do
   @impl Format
   def features(_opts), do: [sigils: [], extensions: [".ex", ".exs"]]
 
+  @doc """
+  Options is a list of styles, that can have options, à la credo:
+
+  Example `.formatter.exs`:
+
+  [
+    plugins: [Styler],
+    styler: [
+      enabled_styles: [
+        {Styler.Style.ModuleDirectives, ignore_prefixes: ["lib/"]},
+        {Styler.Style.Pipes, ignore_prefixes: ["test/"]},
+      ]
+    ]
+  ]
+
+  For now, the only config is `ignore_prefixes`, which is a list of file
+  prefixes to ignore when styling.
+  """
   @impl Format
   def format(input, formatter_opts) do
     file = formatter_opts[:file]
