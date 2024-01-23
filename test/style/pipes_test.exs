@@ -489,6 +489,43 @@ defmodule Styler.Style.PipesTest do
     end
   end
 
+  describe "multiline as a first pipe" do
+    test "multiline is left alone" do
+      assert_style("""
+      %{
+        foo: "bar",
+        bar: "foo"
+      }
+      |> bar()
+      """)
+
+      assert_style("""
+      %Struct{
+        foo: "bar",
+        bar: "foo"
+      }
+      |> bar()
+      """)
+
+      assert_style("""
+      [
+        ~D[2016-01-01],
+        ~D[2016-05-01]
+      ]
+      |> bar()
+      """)
+
+      assert_style("""
+      \"\"\"
+      Long
+      string
+      multiline
+      \"\"\"
+      |> bar()
+      """)
+    end
+  end
+
   describe "simple rewrites" do
     test "{Keyword/Map}.merge/2 of a single key => *.put/3" do
       for module <- ~w(Map Keyword) do
