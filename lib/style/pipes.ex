@@ -50,6 +50,26 @@ defmodule Styler.Style.Pipes do
           {{:|>, _, [_, {:unquote, _, [_]}]}, _} = single_pipe_unquote_zipper ->
             {:cont, single_pipe_unquote_zipper, ctx}
 
+          # don't un-pipe for insert/build
+          # Not the prettiest place to do that. Needs also to be considered as a valid start,
+          # see valid_pipe_start?/1
+          {{:|>, _, [{:insert, _, _}, _]}, _} =
+              single_pipe_ex_machina_zipper ->
+            {:cont, single_pipe_ex_machina_zipper, ctx}
+
+          {{:|>, _, [{:insert_list, _, _}, _]}, _} =
+              single_pipe_ex_machina_zipper ->
+            {:cont, single_pipe_ex_machina_zipper, ctx}
+
+          {{:|>, _, [{:build, _, _}, _]}, _} =
+              single_pipe_ex_machina_zipper ->
+            {:cont, single_pipe_ex_machina_zipper, ctx}
+
+          {{:|>, _, [{:build_list, _, _}, _]}, _} =
+              single_pipe_ex_machina_zipper ->
+            {:cont, single_pipe_ex_machina_zipper, ctx}
+
+          # General case
           {{:|>, _, [lhs, rhs]}, _} = single_pipe_zipper ->
             {_, meta, _} = lhs
             # try to get everything on one line if we can
@@ -304,6 +324,11 @@ defmodule Styler.Style.Pipes do
   # Exempt ecto's `from`
   defp valid_pipe_start?({{:., _, [{_, _, [:Query]}, :from]}, _, _}), do: true
   defp valid_pipe_start?({{:., _, [{_, _, [:Ecto, :Query]}, :from]}, _, _}), do: true
+  # Exempt ex_machina's insert/build
+  defp valid_pipe_start?({:insert, _, _}), do: true
+  defp valid_pipe_start?({:insert_list, _, _}), do: true
+  defp valid_pipe_start?({:build, _, _}), do: true
+  defp valid_pipe_start?({:build_list, _, _}), do: true
   # map[:foo]
   defp valid_pipe_start?({{:., _, [Access, :get]}, _, _}), do: true
   # 'char#{list} interpolation'
