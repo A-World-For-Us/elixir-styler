@@ -474,6 +474,14 @@ defmodule Styler.Style.PipesTest do
       assert_style("^foo |> Ecto.Query.bar() |> Ecto.Query.baz()")
     end
 
+    test "ex_machina" do
+      assert_style("insert(:user) |> with_password()")
+      assert_style("insert(:user) |> with_password() |> Repo.insert()")
+      assert_style("build(:user) |> with_password()")
+      assert_style("build(:user) |> with_password() |> Repo.insert()")
+      assert_style("build_list(11, :user) |> Enum.map()")
+    end
+
     test "ranges" do
       assert_style("start..stop//step |> foo()", "foo(start..stop//step)")
       assert_style("start..stop//step |> foo() |> bar()")
