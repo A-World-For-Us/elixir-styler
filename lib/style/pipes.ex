@@ -86,7 +86,7 @@ defmodule Styler.Style.Pipes do
               end
 
             # Ignore multiline, as piping helps readability
-            if is_multiline(lhs, rhs) do
+            if is_multiline(lhs, rhs) or is_ecto_ignored(lhs, rhs) do
               {:cont, single_pipe_zipper, ctx}
             else
               lhs = Style.set_line(lhs, line)
@@ -112,6 +112,20 @@ defmodule Styler.Style.Pipes do
     do: String.match?("#{fun}", ~r/^sigil_[a-zA-Z]$/) && rhs_meta[:line] - lhs_meta[:line] >= 4
 
   defp is_multiline(_, _), do: false
+
+  # Leave `from(foo in Bar, where foo.bool) |> Repo.all()` and friends alone
+  defp is_ecto_ignored({:from, _, _}, _rhs), do: true
+  defp is_ecto_ignored({{:., _, [{:__aliases__, _, [:Query]}, :from]}, _, _}, _rhs), do: true
+  defp is_ecto_ignored({{:., _, [{:__aliases__, _, [:Ecto, :Query]}, :from]}, _, _}, _rhs), do: true
+
+  # Ignore SomeModule |> where([sm], not sm.archived)
+  defp is_ecto_ignored({:__aliases__, _, _}, {:where, _, _}), do: true
+  # Ignore query |> where([sm], not sm.archived)
+  defp is_ecto_ignored({:query, _, _}, _), do: true
+  # Ignore some_query |> where([sm], not sm.archived)
+  defp is_ecto_ignored({atom, _, _}, _) when is_atom(atom), do: atom |> Atom.to_string() |> String.ends_with?("_query")
+
+  defp is_ecto_ignored(_lhs, _rhs), do: false
 
   defp fix_pipe_start({pipe, zmeta} = zipper) do
     {{:|>, pipe_meta, [lhs, rhs]}, _} = start_zipper = find_pipe_start({pipe, nil})
