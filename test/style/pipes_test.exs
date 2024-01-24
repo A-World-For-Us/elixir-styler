@@ -471,6 +471,17 @@ defmodule Styler.Style.PipesTest do
         """)
       end
 
+      for from <- ~w(from Query.from Ecto.Query.from) do
+        assert_style("""
+        #{from}(foo in Bar, where: foo.bool)
+        |> Repo.all()
+        """)
+      end
+
+      assert_style("SomeModule |> where([sm], not sm.archived)")
+      assert_style("base_query() |> not_hidden_query()")
+      assert_style("query |> where([sm], not sm.archived)")
+
       assert_style("^foo |> Ecto.Query.bar() |> Ecto.Query.baz()")
     end
 
