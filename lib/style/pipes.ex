@@ -64,12 +64,9 @@ defmodule Styler.Style.Pipes do
 
           # General case
           {{:|>, _, [lhs, rhs]}, _} = single_pipe_zipper ->
-            {op, lhs_meta, _} = lhs
-            {_, rhs_meta, _} = rhs
+            {_, lhs_meta, _} = lhs
 
-            # Ignore multiline, as piping helps readability
-            if (op in ~w(%{} % __block__)a and rhs_meta[:line] - lhs_meta[:line] >= 4) or
-                 is_ecto_ignored(lhs, rhs) do
+            if is_multiline(lhs, rhs) or is_ecto_ignored(lhs, rhs) do
               {:cont, single_pipe_zipper, ctx}
             else
               lhs = Style.set_line(lhs, lhs_meta[:line])
@@ -85,6 +82,16 @@ defmodule Styler.Style.Pipes do
   end
 
   def run(zipper, ctx), do: {:cont, zipper, ctx}
+
+  # Ignore multiline, as piping helps readability
+  @multiline_start ~w(%{} % __block__)a
+  defp is_multiline({op, lhs_meta, _}, {_, rhs_meta, _}) when op in @multiline_start,
+    do: rhs_meta[:line] - lhs_meta[:line] >= 4
+
+  defp is_multiline({fun, lhs_meta, _}, {_, rhs_meta, _}) when is_atom(fun),
+    do: String.match?("#{fun}", ~r/^sigil_[a-zA-Z]$/) && rhs_meta[:line] - lhs_meta[:line] >= 4
+
+  defp is_multiline(_, _), do: false
 
   # Leave `from(foo in Bar, where foo.bool) |> Repo.all()` and friends alone
   defp is_ecto_ignored({:from, _, _}, _rhs), do: true

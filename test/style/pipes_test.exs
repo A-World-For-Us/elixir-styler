@@ -534,6 +534,15 @@ defmodule Styler.Style.PipesTest do
       \"\"\"
       |> bar()
       """)
+
+      assert_style("""
+      ~s\"\"\"
+      Long
+      string
+      multiline
+      \"\"\"
+      |> bar()
+      """)
     end
   end
 
