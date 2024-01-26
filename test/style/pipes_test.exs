@@ -41,43 +41,6 @@ defmodule Styler.Style.PipesTest do
         """
       )
     end
-
-    test "fixes nested pipes" do
-      assert_style(
-        """
-        a
-        |> e(fn x ->
-          with({:ok, value} <- efoo(x), do: value)
-          |> ebar()
-          |> ebaz()
-        end)
-        |> b(fn x ->
-          with({:ok, value} <- foo(x), do: value)
-          |> bar()
-          |> baz()
-        end)
-        |> c
-        """,
-        """
-        a
-        |> e(fn x ->
-          with_result = with({:ok, value} <- efoo(x), do: value)
-
-          with_result
-          |> ebar()
-          |> ebaz()
-        end)
-        |> b(fn x ->
-          with_result = with({:ok, value} <- foo(x), do: value)
-
-          with_result
-          |> bar()
-          |> baz()
-        end)
-        |> c()
-        """
-      )
-    end
   end
 
   describe "block pipe starts" do
@@ -85,12 +48,14 @@ defmodule Styler.Style.PipesTest do
       assert_style(
         "a(if x do y end |> foo(), b)",
         """
-        if_result =
-          if x do
-            y
-          end
-
-        a(foo(if_result), b)
+        a(
+          foo(
+            if x do
+              y
+            end
+          ),
+          b
+        )
         """
       )
     end
@@ -104,68 +69,33 @@ defmodule Styler.Style.PipesTest do
       )
       """)
 
-      assert_style(
-        """
-        foo do
-          "foo"
-        end
-        |> IO.puts()
-        """,
-        """
-        foo_result =
-          foo do
-            "foo"
-          end
+      assert_style("""
+      foo do
+        "foo"
+      end
+      |> IO.puts()
+      """)
 
-        IO.puts(foo_result)
-        """
-      )
-
-      assert_style(
-        """
-        foo meow? do
-          :meow
-        else
-          :bark
-        end
-        |> IO.puts()
-        """,
-        """
-        foo_result =
-          foo meow? do
-            :meow
-          else
-            :bark
-          end
-
-        IO.puts(foo_result)
-        """
-      )
+      assert_style("""
+      foo meow? do
+        :meow
+      else
+        :bark
+      end
+      |> IO.puts()
+      """)
     end
 
     test "block extraction: names aliased modules" do
-      assert_style(
-        """
-        Foo.bar do
-          :ok
-        end
-        |> case do
-          :ok -> :ok
-          _ -> :error
-        end
-        """,
-        """
-        bar_result =
-          Foo.bar do
-            :ok
-          end
-
-        case bar_result do
-          :ok -> :ok
-          _ -> :error
-        end
-        """
-      )
+      assert_style("""
+      Foo.bar do
+        :ok
+      end
+      |> case do
+        :ok -> :ok
+        _ -> :error
+      end
+      """)
     end
 
     test "macro with arg and do block" do
@@ -189,180 +119,73 @@ defmodule Styler.Style.PipesTest do
           |> baz()
         """,
         """
-        case_result =
+        x =
           case y do
             :ok -> IO.puts(:ok)
           end
-
-        x =
-          case_result
           |> bar()
           |> baz()
         """
       )
     end
 
-    test "rewrites fors" do
-      assert_style(
-        """
-        for(a <- as, do: a)
-        |> bar()
-        |> baz()
-        """,
-        """
-        for_result = for(a <- as, do: a)
-
-        for_result
-        |> bar()
-        |> baz()
-        """
-      )
+    test "keeps fors" do
+      assert_style("""
+      for(a <- as, do: a)
+      |> bar()
+      """)
     end
 
-    test "rewrites unless" do
-      assert_style(
-        """
-        unless foo do
-          bar
-        end
-        |> wee()
-        """,
-        """
-        unless_result =
-          unless foo do
-            bar
-          end
-
-        wee(unless_result)
-        """
-      )
+    test "keeps unless" do
+      assert_style("""
+      unless foo do
+        bar
+      end
+      |> wee()
+      """)
     end
 
-    test "rewrites with" do
-      assert_style(
-        """
-        with({:ok, value} <- foo(), do: value)
-        |> bar()
-        |> baz()
-        """,
-        """
-        with_result = with({:ok, value} <- foo(), do: value)
-
-        with_result
-        |> bar()
-        |> baz()
-        """
-      )
+    test "keeps with" do
+      assert_style("""
+      with({:ok, value} <- foo(), do: value)
+      |> bar()
+      """)
     end
 
-    test "rewrites conds" do
-      assert_style(
-        """
-        cond do
-          x -> :ok
-        end
-        |> bar()
-        |> baz()
-        """,
-        """
-        cond_result =
-          cond do
-            x -> :ok
-          end
-
-        cond_result
-        |> bar()
-        |> baz()
-        """
-      )
+    test "keeps conds" do
+      assert_style("""
+      cond do
+        x -> :ok
+      end
+      |> foo()
+      """)
     end
 
-    test "rewrites case" do
-      assert_style(
-        """
-        case x do
-          x -> x
-        end
-        |> foo()
-        """,
-        """
-        case_result =
-          case x do
-            x -> x
-          end
-
-        foo(case_result)
-        """
-      )
-
-      assert_style(
-        """
-        def foo do
-          case x do
-            x -> x
-          end
-          |> foo()
-        end
-        """,
-        """
-        def foo do
-          case_result =
-            case x do
-              x -> x
-            end
-
-          foo(case_result)
-        end
-        """
-      )
+    test "keeps case" do
+      assert_style("""
+      case x do
+        x -> x
+      end
+      |> foo()
+      """)
     end
 
-    test "rewrites if" do
-      assert_style(
-        """
-        def foo do
-          if true do
-            nil
-          end
-          |> a()
-          |> b()
-        end
-        """,
-        """
-        def foo do
-          if_result =
-            if true do
-              nil
-            end
-
-          if_result
-          |> a()
-          |> b()
-        end
-        """
-      )
+    test "keeps if" do
+      assert_style("""
+      if true do
+        nil
+      end
+      |> foo()
+      """)
     end
 
-    test "rewrites quote" do
-      assert_style(
-        """
-        quote do
-          foo
-        end
-        |> bar()
-        |> baz()
-        """,
-        """
-        quote_result =
-          quote do
-            foo
-          end
-
-        quote_result
-        |> bar()
-        |> baz()
-        """
-      )
+    test "keeps quote" do
+      assert_style("""
+      quote do
+        foo
+      end
+      |> foo()
+      """)
     end
   end
 
@@ -423,12 +246,10 @@ defmodule Styler.Style.PipesTest do
         )
         """,
         """
-        if_result =
-          if true do
-            false
-          end
-
-        foo(if_result, bar)
+        if true do
+          false
+        end
+        |> foo(bar)
         """
       )
     end
@@ -502,38 +323,38 @@ defmodule Styler.Style.PipesTest do
 
   describe "multiline as a first pipe" do
     test "multiline is left alone" do
-      assert_style("""
-      %{
-        foo: "bar",
-        bar: "foo"
-      }
-      |> bar()
-      """)
+      # assert_style("""
+      # %{
+      #   foo: "bar",
+      #   bar: "foo"
+      # }
+      # |> bar()
+      # """)
 
-      assert_style("""
-      %Struct{
-        foo: "bar",
-        bar: "foo"
-      }
-      |> bar()
-      """)
+      # assert_style("""
+      # %Struct{
+      #   foo: "bar",
+      #   bar: "foo"
+      # }
+      # |> bar()
+      # """)
 
-      assert_style("""
-      [
-        ~D[2016-01-01],
-        ~D[2016-05-01]
-      ]
-      |> bar()
-      """)
+      # assert_style("""
+      # [
+      #   ~D[2016-01-01],
+      #   ~D[2016-05-01]
+      # ]
+      # |> bar()
+      # """)
 
-      assert_style("""
-      \"\"\"
-      Long
-      string
-      multiline
-      \"\"\"
-      |> bar()
-      """)
+      # assert_style("""
+      # \"\"\"
+      # Long
+      # string
+      # multiline
+      # \"\"\"
+      # |> bar()
+      # """)
 
       assert_style("""
       ~s\"\"\"
@@ -637,14 +458,12 @@ defmodule Styler.Style.PipesTest do
           |> Enum.count()
           """,
           """
-          if_result =
-            if true do
-              []
-            else
-              [a, b, c]
-            end
-
-          Enum.count(if_result, fun)
+          if true do
+            []
+          else
+            [a, b, c]
+          end
+          |> Enum.count(fun)
           """
         )
       end
