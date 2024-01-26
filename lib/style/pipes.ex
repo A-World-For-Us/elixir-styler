@@ -69,6 +69,12 @@ defmodule Styler.Style.Pipes do
               single_pipe_ex_machina_zipper ->
             {:cont, single_pipe_ex_machina_zipper, ctx}
 
+          # For comprehensions / with are exempt
+          {{:|>, _, [{op, _, _}, _]}, _} =
+              single_pipe_fors_zipper
+          when op in ~w(for with)a ->
+            {:cont, single_pipe_fors_zipper, ctx}
+
           # General case
           {{:|>, _, [lhs, rhs]}, _} = single_pipe_zipper ->
             {_, meta, _} = lhs
@@ -104,14 +110,11 @@ defmodule Styler.Style.Pipes do
   def run(zipper, ctx), do: {:cont, zipper, ctx}
 
   # Ignore multiline, as piping helps readability
-  @multiline_start ~w(%{} % __block__)a
-  defp is_multiline({op, lhs_meta, _}, {_, rhs_meta, _}) when op in @multiline_start,
-    do: rhs_meta[:line] - lhs_meta[:line] >= 4
+  defp is_multiline({_, lhs_meta, _}, {_, rhs_meta, _}) do
+    rhs_meta[:line] - lhs_meta[:line] >= 3
+  end
 
-  defp is_multiline({fun, lhs_meta, _}, {_, rhs_meta, _}) when is_atom(fun),
-    do: String.match?("#{fun}", ~r/^sigil_[a-zA-Z]$/) && rhs_meta[:line] - lhs_meta[:line] >= 4
-
-  defp is_multiline(_, _), do: false
+  defp is_multiline(_lhs, _rhs), do: false
 
   # Leave `from(foo in Bar, where foo.bool) |> Repo.all()` and friends alone
   defp is_ecto_ignored({:from, _, _}, _rhs), do: true
@@ -160,50 +163,26 @@ defmodule Styler.Style.Pipes do
     end)
   end
 
-  defp extract_start({fun, meta, [arg | args]} = lhs) do
+  defp extract_start({fun, meta, [arg | args]} = _lhs) do
     line = meta[:line]
 
-    # is it a do-block macro style invocation?
-    # if so, store the block result in a var and start the pipe w/ that
-    if Enum.any?([arg | args], &match?([{{:__block__, _, [:do]}, _} | _], &1)) do
-      # `block [foo] do ... end |> ...`
-      # =======================>
-      # block_result =
-      #   block [foo] do
-      #     ...
-      #   end
-      #
-      # block_result
-      # |> ...
-      var_name =
-        case fun do
-          fun when is_atom(fun) -> fun
-          {:., _, [{:__aliases__, _, _}, fun]} when is_atom(fun) -> fun
-          _ -> "block"
-        end
-
-      variable = {:"#{var_name}_result", [line: line], nil}
-      new_assignment = {:=, [line: line], [variable, lhs]}
-      {variable, new_assignment}
-    else
-      # looks like it's just a normal function, so lift the first arg up into a new pipe
-      # `foo(a, ...) |> ...` => `a |> foo(...) |> ...`
-      arg =
-        case arg do
-          # If the first arg is a syntax-sugared kwl, we need to manually desugar it to cover all scenarios
-          [{{:__block__, bm, _}, {:__block__, _, _}} | _] ->
-            if bm[:format] == :keyword do
-              {:__block__, [line: line, closing: [line: line]], [arg]}
-            else
-              arg
-            end
-
-          arg ->
+    # should be just a normal function, so lift the first arg up into a new pipe
+    # `foo(a, ...) |> ...` => `a |> foo(...) |> ...`
+    arg =
+      case arg do
+        # If the first arg is a syntax-sugared kwl, we need to manually desugar it to cover all scenarios
+        [{{:__block__, bm, _}, {:__block__, _, _}} | _] ->
+          if bm[:format] == :keyword do
+            {:__block__, [line: line, closing: [line: line]], [arg]}
+          else
             arg
-        end
+          end
 
-      {{:|>, [line: line], [arg, {fun, meta, args}]}, nil}
-    end
+        arg ->
+          arg
+      end
+
+    {{:|>, [line: line], [arg, {fun, meta, args}]}, nil}
   end
 
   # `pipe_chain(a, b, c)` generates the ast for `a |> b |> c`
@@ -362,13 +341,20 @@ defmodule Styler.Style.Pipes do
   defp valid_pipe_start?({{:., _, [Access, :get]}, _, _}), do: true
   # 'char#{list} interpolation'
   defp valid_pipe_start?({{:., _, [List, :to_charlist]}, _, _}), do: true
+
+  # Arbitrary do blocks macros (and sigils)
+  defp valid_pipe_start?({fun, _, [arg | args]}) do
+    # is it a do-block macro style invocation?
+    Enum.any?([arg | args], &match?([{{:__block__, _, [:do]}, _} | _], &1)) or
+      (is_atom(fun) and String.match?("#{fun}", ~r/^sigil_[a-zA-Z]$/))
+  end
+
   # n-arity Module.function_call(...args)
   defp valid_pipe_start?({{:., _, _}, _, _}), do: false
   # variable
   defp valid_pipe_start?({variable, _, nil}) when is_atom(variable), do: true
   # 0-arity function_call()
   defp valid_pipe_start?({fun, _, []}) when is_atom(fun), do: true
-  # function_call(with, args) or sigils. sigils are allowed, function w/ args is not
-  defp valid_pipe_start?({fun, _, _args}) when is_atom(fun), do: String.match?("#{fun}", ~r/^sigil_[a-zA-Z]$/)
+
   defp valid_pipe_start?(_), do: true
 end
