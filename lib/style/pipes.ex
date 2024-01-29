@@ -32,6 +32,13 @@ defmodule Styler.Style.Pipes do
   @collectable ~w(Map Keyword MapSet)a
   @enum ~w(Enum Stream)a
 
+  # most of these values were lifted directly from credo's pipe_chain_start.ex
+  @literal ~w(__block__ __aliases__ unquote)a
+  @value_constructors ~w(% %{} .. ..// <<>> @ {} ^ & fn from)a
+  @kernel_ops ~w(++ -- && || in - * + / > < <= >= == and or != !== === <>)a
+  @special_ops ~w(||| &&& <<< >>> <<~ ~>> <~ ~> <~>)a
+  @special_ops @literal ++ @value_constructors ++ @kernel_ops ++ @special_ops
+
   def run({{:|>, _, _}, _} = zipper, ctx) do
     case fix_pipe_start(zipper) do
       {{:|>, _, _}, _} = zipper ->
@@ -171,25 +178,34 @@ defmodule Styler.Style.Pipes do
     quote do: {:|>, _, [{:|>, _, [unquote(a), unquote(b)]}, unquote(c)]}
   end
 
-  # Unary operators needs to be expanded (#128)
-  defp maybe_wrap_unary({op, meta, []}) when op in ~w(- +)a,
-    do: {{:., meta, [{:__aliases__, meta, [:Kernel]}, op]}, meta, []}
-
-  defp maybe_wrap_unary(lhs), do: lhs
-
   # a |> fun => a |> fun()
   defp fix_pipe({:|>, m, [lhs, {fun, m2, nil}]}), do: {:|>, m, [lhs, {fun, m2, []}]}
-  # a |> then(&fun/1) |> c => a |> fun() |> c()
-  defp fix_pipe({:|>, m, [lhs, {:then, _, [{:&, _, [{:/, _, [{fun, m2, _}, _]}]}]}]}), do: {:|>, m, [lhs, {fun, m2, []}]}
+
   # a |> then(&fun(&1, d)) |> c => a |> fun(d) |> c()
   defp fix_pipe({:|>, m, [lhs, {:then, _, [{:&, _, [{fun, m2, [{:&, _, _} | args]}]}]}]} = pipe) do
     rewrite = {fun, m2, args}
 
     # if `&1` is referenced more than once, we have to continue using `then`
-    if rewrite |> Zipper.zip() |> Zipper.any?(&match?({:&, _, _}, &1)),
-      do: pipe,
-      else: {:|>, m, [lhs, maybe_wrap_unary(rewrite)]}
+    cond do
+      rewrite |> Zipper.zip() |> Zipper.any?(&match?({:&, _, _}, &1)) ->
+        pipe
+
+      fun in @special_ops ->
+        # we only rewrite unary/infix operators if they're in the Kernel namespace.
+        # everything else stays as-is in the `then/2` because we can't know what module they're from
+        if fun in @kernel_ops,
+          do: {:|>, m, [lhs, {{:., m2, [{:__aliases__, m2, [:Kernel]}, fun]}, m2, args}]},
+          else: pipe
+
+      true ->
+        {:|>, m, [lhs, rewrite]}
+    end
   end
+
+  # a |> then(&fun/1) |> c => a |> fun() |> c()
+  # recurses to add the `()` to `fun` as it gets unwound
+  defp fix_pipe({:|>, m, [lhs, {:then, _, [{:&, _, [{:/, _, [fun, {:__block__, _, [1]}]}]}]}]}),
+    do: fix_pipe({:|>, m, [lhs, fun]})
 
   # Credo.Check.Readability.PipeIntoAnonymousFunctions
   # rewrite anonymous function invocation to use `then/2`
@@ -288,26 +304,19 @@ defmodule Styler.Style.Pipes do
     Style.set_line({:|>, [], [lhs, {new, nm, [mapper]}]}, nm[:line])
   end
 
-  for mod <- [:Map, :Keyword] do
-    # lhs |> Map.merge(%{key: value}) => lhs |> Map.put(key, value)
-    defp fix_pipe({:|>, pm, [lhs, {{:., dm, [{_, _, [unquote(mod)]} = mod, :merge]}, m, [{:%{}, _, [{key, value}]}]}]}),
-      do: {:|>, pm, [lhs, {{:., dm, [mod, :put]}, m, [key, value]}]}
+  # lhs |> Map.merge(%{key: value}) => lhs |> Map.put(key, value)
+  defp fix_pipe({:|>, pm, [lhs, {{:., dm, [{_, _, [mod]} = module, :merge]}, m, [{:%{}, _, [{key, value}]}]}]})
+       when mod in [:Map, :Keyword],
+       do: {:|>, pm, [lhs, {{:., dm, [module, :put]}, m, [key, value]}]}
 
-    # lhs |> Map.merge(key: value) => lhs |> Map.put(:key, value)
-    defp fix_pipe({:|>, pm, [lhs, {{:., dm, [{_, _, [unquote(mod)]} = module, :merge]}, m, [[{key, value}]]}]}),
-      do: {:|>, pm, [lhs, {{:., dm, [module, :put]}, m, [key, value]}]}
-  end
+  # lhs |> Map.merge(key: value) => lhs |> Map.put(:key, value)
+  defp fix_pipe({:|>, pm, [lhs, {{:., dm, [{_, _, [mod]} = module, :merge]}, m, [[{key, value}]]}]})
+       when mod in [:Map, :Keyword],
+       do: {:|>, pm, [lhs, {{:., dm, [module, :put]}, m, [key, value]}]}
 
   defp fix_pipe(node), do: node
 
-  # most of these values were lifted directly from credo's pipe_chain_start.ex
-  @literal ~w(__block__ __aliases__ unquote)a
-  @value_constructors ~w(% %{} .. ..// <<>> @ {} ^ & fn from)a
-  @infix_ops ~w(++ -- && || in - * + / > < <= >= == and or != !== ===)a
-  @binary_ops ~w(<> <- ||| &&& <<< >>> <<~ ~>> <~ ~> <~> <|> ^^^ ~~~)a
-  @valid_starts @literal ++ @value_constructors ++ @infix_ops ++ @binary_ops
-
-  defp valid_pipe_start?({op, _, _}) when op in @valid_starts, do: true
+  defp valid_pipe_start?({op, _, _}) when op in @special_ops, do: true
   # 0-arity Module.function_call()
   defp valid_pipe_start?({{:., _, _}, _, []}), do: true
   # Exempt ecto's `from`
