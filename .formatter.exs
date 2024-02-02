@@ -8,5 +8,9 @@
     assert_style: 2
   ],
   plugins: [Styler],
+  styler: [
+    {Styler.Style.ModuleDirectives, ignore_prefixes: ["lib/"]},
+    {Styler.Style.Pipes, ignore_prefixes: ["test/"]}
+  ],
   line_length: 122
 ]

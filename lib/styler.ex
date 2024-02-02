@@ -28,6 +28,7 @@ defmodule Styler do
 
   @doc false
   def style({ast, comments}, file, opts) do
+    dbg(file)
     on_error = opts[:on_error] || :log
     enabled_styles = opts[:config] || @styles
     zipper = Zipper.zip(ast)
@@ -38,6 +39,8 @@ defmodule Styler do
       |> Enum.filter(fn
         {_style, opts} ->
           if Keyword.has_key?(opts, :ignore_prefixes) do
+            dbg(file)
+            dbg(File.cwd!())
             !Enum.any?(opts[:ignore_prefixes], &String.starts_with?(file, Path.join(File.cwd!(), &1)))
           else
             true
