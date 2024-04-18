@@ -85,10 +85,15 @@ defmodule Styler.Style.Pipes do
                 Style.set_line(args, line)
               end
 
-            lhs = Style.set_line(lhs, line)
-            {_, meta, _} = Style.set_line({:ignore, meta, []}, line)
-            function_call_zipper = Zipper.replace(single_pipe_zipper, {fun, meta, [lhs | args]})
-            {:cont, function_call_zipper, ctx}
+            # Ignore multiline, as piping helps readability
+            if is_multiline(lhs, rhs) do
+              {:cont, single_pipe_zipper, ctx}
+            else
+              lhs = Style.set_line(lhs, line)
+              {_, meta, _} = Style.set_line({:ignore, meta, []}, line)
+              function_call_zipper = Zipper.replace(single_pipe_zipper, {fun, meta, [lhs | args]})
+              {:cont, function_call_zipper, ctx}
+            end
         end
 
       non_pipe ->
@@ -97,6 +102,16 @@ defmodule Styler.Style.Pipes do
   end
 
   def run(zipper, ctx), do: {:cont, zipper, ctx}
+
+  # Ignore multiline, as piping helps readability
+  @multiline_start ~w(%{} % __block__)a
+  defp is_multiline({op, lhs_meta, _}, {_, rhs_meta, _}) when op in @multiline_start,
+    do: rhs_meta[:line] - lhs_meta[:line] >= 4
+
+  defp is_multiline({fun, lhs_meta, _}, {_, rhs_meta, _}) when is_atom(fun),
+    do: String.match?("#{fun}", ~r/^sigil_[a-zA-Z]$/) && rhs_meta[:line] - lhs_meta[:line] >= 4
+
+  defp is_multiline(_, _), do: false
 
   defp fix_pipe_start({pipe, zmeta} = zipper) do
     {{:|>, pipe_meta, [lhs, rhs]}, _} = start_zipper = find_pipe_start({pipe, nil})

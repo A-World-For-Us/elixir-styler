@@ -489,6 +489,52 @@ defmodule Styler.Style.PipesTest do
     end
   end
 
+  describe "multiline as a first pipe" do
+    test "multiline is left alone" do
+      assert_style("""
+      %{
+        foo: "bar",
+        bar: "foo"
+      }
+      |> bar()
+      """)
+
+      assert_style("""
+      %Struct{
+        foo: "bar",
+        bar: "foo"
+      }
+      |> bar()
+      """)
+
+      assert_style("""
+      [
+        ~D[2016-01-01],
+        ~D[2016-05-01]
+      ]
+      |> bar()
+      """)
+
+      assert_style("""
+      \"\"\"
+      Long
+      string
+      multiline
+      \"\"\"
+      |> bar()
+      """)
+
+      assert_style("""
+      ~s\"\"\"
+      Long
+      string
+      multiline
+      \"\"\"
+      |> bar()
+      """)
+    end
+  end
+
   describe "simple rewrites" do
     test "rewrites anonymous function invocations to use then" do
       assert_style("a |> (& &1).()", "then(a, & &1)")
